@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quiet Life</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    h1 { font-size: 1.6rem; margin-bottom: 12px; color: #f0e6d3; }
+    #game-container { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
+    #canvas {
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      cursor: pointer;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    #ui {
+      width: 260px;
+      background: rgba(30, 30, 50, 0.95);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .stat-bar { margin-bottom: 14px; }
+    .stat-bar label { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px; color: #aaa; }
+    .stat-bar .bar { height: 10px; background: #333; border-radius: 5px; overflow: hidden; }
+    .stat-bar .fill { height: 100%; transition: width 0.4s ease; }
+    .fill.energy { background: linear-gradient(90deg, #38bdf8, #06b6d4); }
+    .fill.hunger { background: linear-gradient(90deg, #fb923c, #f97316); }
+    .fill.mood { background: linear-gradient(90deg, #a78bfa, #8b5cf6); }
+    .fill.focus { background: linear-gradient(90deg, #4ade80, #22c55e); }
+    #time-display { text-align: center; font-size: 1.1rem; margin-bottom: 16px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; }
+    #action-info { margin-top: 16px; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px; font-size: 0.9rem; min-height: 60px; }
+    #action-info .title { font-weight: 600; color: #f0e6d3; margin-bottom: 4px; }
+    #instructions { margin-top: 12px; font-size: 0.8rem; color: #888; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <h1>Quiet Life</h1>
+  <div id="game-container">
+    <canvas id="canvas" width="800" height="600"></canvas>
+    <div id="ui">
+      <div id="time-display">Day 1 — 08:00</div>
+      <div class="stat-bar"><label><span>Energy</span><span id="energy-val">80</span></label><div class="bar"><div class="fill energy" id="energy-bar" style="width:80%"></div></div></div>
+      <div class="stat-bar"><label><span>Hunger</span><span id="hunger-val">70</span></label><div class="bar"><div class="fill hunger" id="hunger-bar" style="width:70%"></div></div></div>
+      <div class="stat-bar"><label><span>Mood</span><span id="mood-val">75</span></label><div class="bar"><div class="fill mood" id="mood-bar" style="width:75%"></div></div></div>
+      <div class="stat-bar"><label><span>Focus</span><span id="focus-val">60</span></label><div class="bar"><div class="fill focus" id="focus-bar" style="width:60%"></div></div></div>
+      <div id="action-info"><div class="title">Idle</div><div id="action-desc">Click on furniture to interact.</div></div>
+      <div id="instructions"><strong>Controls:</strong><br>• Click furniture to walk & interact<br>• Watch daily rhythms unfold</div>
+    </div>
+  </div>
+
+<script>
+// ============================================================
+// FURNITURE DRAWING WITH ORIENTATION
+// ============================================================
+function drawFurniture(ctx, f) {
+  const { x, y, w, h, type, facing = 'down', isPrimary = false } = f;
+  
+  // Primary furniture gets subtle glow
+  if (isPrimary) {
+    ctx.shadowColor = 'rgba(255, 240, 220, 0.15)';
+    ctx.shadowBlur = 12;
+  }
+  
+  ctx.save();
+  
+  const patterns = {
+    bed: () => {
+      // Bed is AGAINST the wall (headboard at top)
+      // Headboard (thick, against wall)
+      ctx.fillStyle = '#5a4535';
+      ctx.fillRect(x, y, w, 14);
+      ctx.fillStyle = '#6b5545';
+      ctx.fillRect(x + 4, y + 2, w - 8, 10);
+      
+      // Mattress
+      ctx.fillStyle = '#e8e0d8';
+      ctx.fillRect(x + 3, y + 14, w - 6, h - 22);
+      
+      // Pillow (near headboard)
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(x + 8, y + 18, w * 0.35, 14);
+      
+      // Blanket (covers lower 60%)
+      ctx.fillStyle = '#7a8fae';
+      ctx.fillRect(x + 6, y + 36, w - 12, h - 46);
+      // Blanket fold
+      ctx.fillStyle = '#6a7f9e';
+      ctx.fillRect(x + 6, y + 36, w - 12, 6);
+      
+      // Bed frame sides
+      ctx.fillStyle = '#4a3525';
+      ctx.fillRect(x, y + 14, 4, h - 14);
+      ctx.fillRect(x + w - 4, y + 14, 4, h - 14);
+      
+      // Legs (visible at bottom)
+      ctx.fillStyle = '#3a2515';
+      ctx.fillRect(x + 2, y + h - 6, 8, 6);
+      ctx.fillRect(x + w - 10, y + h - 6, 8, 6);
+    },
+    
+    desk: () => {
+      // Desk faces INTO the room (player sits facing wall)
+      const chairSide = facing === 'up' ? 'bottom' : 'top';
+      
+      // Desktop surface
+      ctx.fillStyle = '#a08060';
+      ctx.fillRect(x, y + 6, w, 14);
+      ctx.fillStyle = '#8a6a4a';
+      ctx.fillRect(x + 3, y + 8, w - 6, 10);
+      
+      // Back panel (against wall)
+      if (facing === 'down') {
+        ctx.fillStyle = '#705030';
+        ctx.fillRect(x + 2, y, w - 4, 8);
+      }
+      
+      // Legs
+      ctx.fillStyle = '#604020';
+      ctx.fillRect(x + 4, y + 20, 6, h - 20);
+      ctx.fillRect(x + w - 10, y + 20, 6, h - 20);
+      
+      // Laptop on desk
+      ctx.fillStyle = '#333';
+      ctx.fillRect(x + w/2 - 18, y, 36, 8);
+      ctx.fillStyle = '#1a3a5a';
+      ctx.fillRect(x + w/2 - 16, y + 1, 32, 6);
+      
+      // Small items (pen holder, slight randomness)
+      ctx.fillStyle = '#666';
+      ctx.fillRect(x + 12, y + 2, 8, 6);
+    },
+    
+    chair: () => {
+      // Chair faces the desk it belongs to
+      const backY = facing === 'up' ? y + h - 12 : y;
+      const seatY = facing === 'up' ? y : y + 12;
+      
+      // Chair back
+      ctx.fillStyle = '#7a6a50';
+      ctx.fillRect(x + 4, backY, w - 8, 12);
+      ctx.fillStyle = '#8a7a60';
+      ctx.fillRect(x + 6, backY + 2, w - 12, 8);
+      
+      // Seat
+      ctx.fillStyle = '#9a8a70';
+      ctx.fillRect(x + 2, seatY + 10, w - 4, 12);
+      
+      // Legs
+      ctx.fillStyle = '#5a4a30';
+      const legY = seatY + 22;
+      ctx.fillRect(x + 4, legY, 5, h - 24);
+      ctx.fillRect(x + w - 9, legY, 5, h - 24);
+    },
+    
+    sofa: () => {
+      // Sofa FACES the TV (back against wall)
+      // Back cushion (against wall)
+      ctx.fillStyle = '#5a4a6a';
+      ctx.fillRect(x, y, w, 18);
+      
+      // Seat cushions
+      ctx.fillStyle = '#7a6a8a';
+      ctx.fillRect(x + 4, y + 18, w - 8, h - 26);
+      
+      // Cushion divisions (3 seats)
+      ctx.fillStyle = '#6a5a7a';
+      ctx.fillRect(x + w/3, y + 20, 3, h - 30);
+      ctx.fillRect(x + 2*w/3, y + 20, 3, h - 30);
+      
+      // Armrests
+      ctx.fillStyle = '#6a5a7a';
+      ctx.fillRect(x, y + 10, 10, h - 18);
+      ctx.fillRect(x + w - 10, y + 10, 10, h - 18);
+      
+      // Front lip
+      ctx.fillStyle = '#5a4a6a';
+      ctx.fillRect(x + 4, y + h - 8, w - 8, 8);
+      
+      // Legs
+      ctx.fillStyle = '#3a2a4a';
+      ctx.fillRect(x + 6, y + h - 4, 8, 4);
+      ctx.fillRect(x + w - 14, y + h - 4, 8, 4);
+    },
+    
+    tv: () => {
+      // TV on stand, FACES the sofa
+      // Stand/cabinet
+      ctx.fillStyle = '#4a4a4a';
+      ctx.fillRect(x + 4, y + h - 18, w - 8, 18);
+      ctx.fillStyle = '#3a3a3a';
+      ctx.fillRect(x + 8, y + h - 14, w - 16, 10);
+      
+      // TV frame
+      ctx.fillStyle = '#222';
+      ctx.fillRect(x + 2, y, w - 4, h - 20);
+      
+      // Screen
+      ctx.fillStyle = '#1a2a3a';
+      ctx.fillRect(x + 6, y + 4, w - 12, h - 28);
+      
+      // Screen glow effect
+      const gradient = ctx.createLinearGradient(x, y, x + w, y + h - 20);
+      gradient.addColorStop(0, 'rgba(60, 80, 100, 0.3)');
+      gradient.addColorStop(1, 'rgba(40, 60, 80, 0.1)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(x + 6, y + 4, w - 12, h - 28);
+    },
+    
+    bookshelf: () => {
+      // Bookshelf against wall
+      ctx.fillStyle = '#5a4a3a';
+      ctx.fillRect(x, y, w, h);
+      
+      // Shelves
+      const shelfCount = 4;
+      ctx.fillStyle = '#4a3a2a';
+      for (let i = 1; i < shelfCount; i++) {
+        ctx.fillRect(x, y + i * h/shelfCount - 2, w, 4);
+      }
+      
+      // Books (varied colors and heights)
+      const bookColors = ['#a05050', '#50a050', '#5050a0', '#a0a050', '#a05090', '#50a0a0'];
+      for (let shelf = 0; shelf < shelfCount - 1; shelf++) {
+        let bx = x + 4;
+        const shelfY = y + shelf * h/shelfCount + 4;
+        const shelfH = h/shelfCount - 8;
+        for (let i = 0; i < 5 && bx < x + w - 8; i++) {
+          ctx.fillStyle = bookColors[(shelf * 3 + i) % bookColors.length];
+          const bw = 5 + (i * 2) % 4;
+          const bh = shelfH - (i % 3) * 3;
+          ctx.fillRect(bx, shelfY + (shelfH - bh), bw, bh);
+          bx += bw + 1;
+        }
+      }
+    },
+    
+    table: () => {
+      // Dining table with space around for chairs
+      // Tabletop
+      ctx.fillStyle = '#9a7a50';
+      ctx.fillRect(x, y, w, 14);
+      ctx.fillStyle = '#8a6a40';
+      ctx.fillRect(x + 4, y + 2, w - 8, 10);
+      
+      // Table apron
+      ctx.fillStyle = '#7a5a30';
+      ctx.fillRect(x + 6, y + 14, w - 12, 6);
+      
+      // Legs at corners
+      ctx.fillStyle = '#6a4a20';
+      ctx.fillRect(x + 8, y + 20, 6, h - 20);
+      ctx.fillRect(x + w - 14, y + 20, 6, h - 20);
+      
+      // Place setting hints (plates)
+      ctx.fillStyle = '#ddd';
+      ctx.beginPath();
+      ctx.arc(x + w/3, y + 7, 8, 0, Math.PI * 2);
+      ctx.arc(x + 2*w/3, y + 7, 8, 0, Math.PI * 2);
+      ctx.fill();
+    },
+    
+    stove: () => {
+      // Stove against wall (back panel)
+      ctx.fillStyle = '#333';
+      ctx.fillRect(x, y, w, 8);
+      
+      // Stovetop
+      ctx.fillStyle = '#444';
+      ctx.fillRect(x, y + 8, w, h - 8);
+      
+      // Burners (4 burners in grid)
+      ctx.fillStyle = '#222';
+      const burnerR = 11;
+      ctx.beginPath();
+      ctx.arc(x + w/4, y + 20, burnerR, 0, Math.PI * 2);
+      ctx.arc(x + 3*w/4, y + 20, burnerR, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Oven door
+      ctx.fillStyle = '#3a3a3a';
+      ctx.fillRect(x + 4, y + h/2 + 4, w - 8, h/2 - 8);
+      // Handle
+      ctx.fillStyle = '#666';
+      ctx.fillRect(x + 10, y + h/2 + 8, w - 20, 4);
+      // Oven window
+      ctx.fillStyle = '#2a2a2a';
+      ctx.fillRect(x + 10, y + h/2 + 16, w - 20, h/2 - 28);
+    },
+    
+    fridge: () => {
+      // Fridge against wall
+      ctx.fillStyle = '#9ab';
+      ctx.fillRect(x, y, w, h);
+      
+      // Freezer (top)
+      ctx.fillStyle = '#8a9aaa';
+      ctx.fillRect(x + 2, y + 2, w - 4, h * 0.3);
+      
+      // Door divider
+      ctx.fillStyle = '#6a7a8a';
+      ctx.fillRect(x, y + h * 0.32, w, 4);
+      
+      // Main compartment
+      ctx.fillStyle = '#8a9aaa';
+      ctx.fillRect(x + 2, y + h * 0.36, w - 4, h * 0.62);
+      
+      // Handles
+      ctx.fillStyle = '#555';
+      ctx.fillRect(x + w - 10, y + h * 0.15, 4, 12);
+      ctx.fillRect(x + w - 10, y + h * 0.55, 4, 20);
+    },
+    
+    toilet: () => {
+      // Tank (against wall)
+      ctx.fillStyle = '#ddd';
+      ctx.fillRect(x + w/4, y, w/2, h * 0.35);
+      ctx.fillStyle = '#ccc';
+      ctx.fillRect(x + w/4 + 3, y + 3, w/2 - 6, h * 0.28);
+      
+      // Bowl
+      ctx.fillStyle = '#eee';
+      ctx.beginPath();
+      ctx.ellipse(x + w/2, y + h * 0.65, w/2.2, h * 0.32, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Inner bowl
+      ctx.fillStyle = '#cce';
+      ctx.beginPath();
+      ctx.ellipse(x + w/2, y + h * 0.65, w/3.5, h * 0.22, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Seat
+      ctx.strokeStyle = '#bbb';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(x + w/2, y + h * 0.65, w/2.5, h * 0.28, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    },
+    
+    sink: () => {
+      // Vanity/counter
+      ctx.fillStyle = '#8a8a8a';
+      ctx.fillRect(x, y + h * 0.3, w, h * 0.5);
+      
+      // Basin
+      ctx.fillStyle = '#dde';
+      ctx.fillRect(x + 6, y + h * 0.35, w - 12, h * 0.4);
+      ctx.fillStyle = '#bbd';
+      ctx.fillRect(x + 10, y + h * 0.4, w - 20, h * 0.3);
+      
+      // Faucet
+      ctx.fillStyle = '#888';
+      ctx.fillRect(x + w/2 - 6, y + h * 0.2, 12, 12);
+      ctx.fillRect(x + w/2 - 3, y + h * 0.32, 6, 10);
+      
+      // Mirror above (against wall)
+      ctx.fillStyle = '#556';
+      ctx.fillRect(x + 4, y, w - 8, h * 0.25);
+      ctx.fillStyle = '#8ac';
+      ctx.fillRect(x + 6, y + 2, w - 12, h * 0.2);
+    },
+    
+    shower: () => {
+      // Shower enclosure against wall
+      ctx.fillStyle = '#7a9aaa';
+      ctx.fillRect(x, y, w, h);
+      
+      // Tile pattern
+      ctx.fillStyle = '#8aaaaa';
+      for (let ty = y + 4; ty < y + h - 4; ty += 16) {
+        for (let tx = x + 4; tx < x + w - 4; tx += 16) {
+          ctx.fillRect(tx, ty, 14, 14);
+        }
+      }
+      
+      // Glass door
+      ctx.fillStyle = 'rgba(180, 200, 220, 0.4)';
+      ctx.fillRect(x + 4, y + 4, w/2 - 4, h - 8);
+      
+      // Door handle
+      ctx.fillStyle = '#666';
+      ctx.fillRect(x + w/2 - 8, y + h/2, 6, 16);
+      
+      // Shower head
+      ctx.fillStyle = '#999';
+      ctx.fillRect(x + w - 20, y + 8, 14, 10);
+      ctx.fillRect(x + w - 16, y + 18, 6, 8);
+      
+      // Drain
+      ctx.fillStyle = '#555';
+      ctx.beginPath();
+      ctx.arc(x + w * 0.6, y + h - 14, 6, 0, Math.PI * 2);
+      ctx.fill();
+    },
+    
+    plant: () => {
+      // Decorative floor plant
+      // Pot
+      ctx.fillStyle = '#a06040';
+      ctx.fillRect(x + w * 0.25, y + h * 0.55, w * 0.5, h * 0.45);
+      ctx.fillStyle = '#804020';
+      ctx.fillRect(x + w * 0.2, y + h * 0.55, w * 0.6, 8);
+      
+      // Soil
+      ctx.fillStyle = '#3a2a1a';
+      ctx.fillRect(x + w * 0.28, y + h * 0.52, w * 0.44, 8);
+      
+      // Foliage (multiple layers)
+      ctx.fillStyle = '#3a7a3a';
+      ctx.beginPath();
+      ctx.arc(x + w/2, y + h * 0.38, w * 0.38, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.fillStyle = '#4a8a4a';
+      ctx.beginPath();
+      ctx.arc(x + w/2 - 8, y + h * 0.32, w * 0.25, 0, Math.PI * 2);
+      ctx.arc(x + w/2 + 10, y + h * 0.35, w * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.fillStyle = '#5a9a5a';
+      ctx.beginPath();
+      ctx.arc(x + w/2, y + h * 0.28, w * 0.18, 0, Math.PI * 2);
+      ctx.fill();
+    },
+    
+    dog: () => {
+      // Dog lying/sitting in its spot
+      // Body
+      ctx.fillStyle = '#c9a070';
+      ctx.beginPath();
+      ctx.ellipse(x + w/2, y + h * 0.6, w * 0.4, h * 0.25, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Head
+      ctx.fillStyle = '#d9b080';
+      ctx.beginPath();
+      ctx.arc(x + w * 0.75, y + h * 0.45, w * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Ears
+      ctx.fillStyle = '#a08050';
+      ctx.beginPath();
+      ctx.ellipse(x + w * 0.65, y + h * 0.32, 6, 10, -0.3, 0, Math.PI * 2);
+      ctx.ellipse(x + w * 0.85, y + h * 0.32, 6, 10, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Snout
+      ctx.fillStyle = '#b09060';
+      ctx.beginPath();
+      ctx.ellipse(x + w * 0.82, y + h * 0.5, 8, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Nose
+      ctx.fillStyle = '#333';
+      ctx.beginPath();
+      ctx.arc(x + w * 0.88, y + h * 0.48, 3, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Eye
+      ctx.fillStyle = '#222';
+      ctx.beginPath();
+      ctx.arc(x + w * 0.72, y + h * 0.42, 3, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Tail
+      ctx.fillStyle = '#c9a070';
+      ctx.beginPath();
+      ctx.ellipse(x + w * 0.15, y + h * 0.55, 12, 6, 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Dog bed/mat underneath
+      ctx.fillStyle = '#6a5a4a';
+      ctx.fillRect(x, y + h * 0.75, w, h * 0.25);
+      ctx.fillStyle = '#7a6a5a';
+      ctx.fillRect(x + 4, y + h * 0.78, w - 8, h * 0.19);
+    },
+    
+    bench: () => {
+      // Garden bench
+      // Back rest
+      ctx.fillStyle = '#7a5a3a';
+      ctx.fillRect(x, y, w, 10);
+      ctx.fillStyle = '#8a6a4a';
+      ctx.fillRect(x + 4, y + 2, w - 8, 6);
+      
+      // Seat slats
+      ctx.fillStyle = '#9a7a5a';
+      ctx.fillRect(x, y + 12, w, 8);
+      ctx.fillRect(x, y + 22, w, 8);
+      
+      // Armrests
+      ctx.fillStyle = '#8a6a4a';
+      ctx.fillRect(x, y + 8, 8, 24);
+      ctx.fillRect(x + w - 8, y + 8, 8, 24);
+      
+      // Legs
+      ctx.fillStyle = '#5a3a1a';
+      ctx.fillRect(x + 4, y + 30, 8, h - 30);
+      ctx.fillRect(x + w - 12, y + 30, 8, h - 30);
+    },
+    
+    closet: () => {
+      // Wardrobe against wall
+      ctx.fillStyle = '#6a5a4a';
+      ctx.fillRect(x, y, w, h);
+      
+      // Door panels
+      ctx.fillStyle = '#7a6a5a';
+      ctx.fillRect(x + 3, y + 3, w/2 - 5, h - 6);
+      ctx.fillRect(x + w/2 + 2, y + 3, w/2 - 5, h - 6);
+      
+      // Door frames
+      ctx.fillStyle = '#5a4a3a';
+      ctx.fillRect(x + 6, y + 8, w/2 - 11, h - 16);
+      ctx.fillRect(x + w/2 + 5, y + 8, w/2 - 11, h - 16);
+      
+      // Handles
+      ctx.fillStyle = '#444';
+      ctx.fillRect(x + w/2 - 8, y + h/2 - 8, 5, 16);
+      ctx.fillRect(x + w/2 + 3, y + h/2 - 8, 5, 16);
+    },
+    
+    nightstand: () => {
+      // Small bedside table
+      ctx.fillStyle = '#6a5545';
+      ctx.fillRect(x, y, w, h);
+      
+      // Top
+      ctx.fillStyle = '#7a6555';
+      ctx.fillRect(x, y, w, 6);
+      
+      // Drawer
+      ctx.fillStyle = '#5a4535';
+      ctx.fillRect(x + 3, y + 10, w - 6, h - 18);
+      
+      // Handle
+      ctx.fillStyle = '#444';
+      ctx.fillRect(x + w/2 - 4, y + h/2, 8, 4);
+      
+      // Lamp on top
+      ctx.fillStyle = '#aa9a7a';
+      ctx.fillRect(x + w/2 - 6, y - 12, 12, 12);
+      ctx.fillStyle = '#f0e6d3';
+      ctx.beginPath();
+      ctx.moveTo(x + w/2 - 10, y - 12);
+      ctx.lineTo(x + w/2 + 10, y - 12);
+      ctx.lineTo(x + w/2 + 6, y - 26);
+      ctx.lineTo(x + w/2 - 6, y - 26);
+      ctx.closePath();
+      ctx.fill();
+    },
+    
+    rug: () => {
+      // Decorative rug
+      ctx.fillStyle = f.color || '#6a5a7a';
+      ctx.fillRect(x, y, w, h);
+      
+      // Pattern
+      ctx.fillStyle = 'rgba(255,255,255,0.1)';
+      ctx.fillRect(x + 6, y + 6, w - 12, h - 12);
+      
+      // Border pattern
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + 10, y + 10, w - 20, h - 20);
+    },
+    
+    coffeetable: () => {
+      // Low coffee table
+      ctx.fillStyle = '#7a6a50';
+      ctx.fillRect(x, y, w, 10);
+      ctx.fillStyle = '#6a5a40';
+      ctx.fillRect(x + 4, y + 2, w - 8, 6);
+      
+      // Legs
+      ctx.fillStyle = '#5a4a30';
+      ctx.fillRect(x + 6, y + 10, 5, h - 10);
+      ctx.fillRect(x + w - 11, y + 10, 5, h - 10);
+      
+      // Items on table
+      ctx.fillStyle = '#8a8a8a';
+      ctx.fillRect(x + 14, y + 2, 16, 6); // remote
+      ctx.fillStyle = '#ddd';
+      ctx.beginPath();
+      ctx.arc(x + w - 20, y + 5, 6, 0, Math.PI * 2); // cup
+      ctx.fill();
+    },
+    
+    flowers: () => {
+      // Flower bed
+      // Soil/bed
+      ctx.fillStyle = '#4a3a2a';
+      ctx.fillRect(x, y + h * 0.6, w, h * 0.4);
+      ctx.fillStyle = '#3a2a1a';
+      ctx.fillRect(x + 4, y + h * 0.65, w - 8, h * 0.3);
+      
+      // Flowers
+      const colors = ['#f8a0b0', '#a0b0f8', '#f8f0a0', '#f8b8a0', '#b0f8a0'];
+      for (let i = 0; i < 6; i++) {
+        const fx = x + 10 + i * (w - 20) / 5;
+        const fy = y + h * 0.35 + (i % 2) * 12;
+        
+        // Stem
+        ctx.fillStyle = '#4a8a4a';
+        ctx.fillRect(fx - 1, fy + 8, 3, h * 0.3);
+        
+        // Flower
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.beginPath();
+        ctx.arc(fx, fy, 8, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Center
+        ctx.fillStyle = '#f8e8a0';
+        ctx.beginPath();
+        ctx.arc(fx, fy, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    },
+  };
+
+  if (patterns[type]) {
+    patterns[type]();
+  }
+  
+  ctx.restore();
+  ctx.shadowBlur = 0;
+}
+
+// ============================================================
+// CHARACTER DRAWING
+// ============================================================
+function drawCharacter(ctx, x, y, pose, facing, frame) {
+  const scale = 2;
+  
+  ctx.save();
+  
+  // Flip for left-facing
+  if (facing === 'left') {
+    ctx.translate(x, 0);
+    ctx.scale(-1, 1);
+    ctx.translate(-x, 0);
+  }
+  
+  const offsetX = x - 16;
+  const offsetY = y - 48;
+  
+  if (pose === 'sleep') {
+    // Lying down - horizontal
+    // Head
+    ctx.fillStyle = '#5a4030';
+    ctx.fillRect(offsetX, offsetY + 24, 14 * scale, 6 * scale);
+    ctx.fillStyle = '#f5deb3';
+    ctx.fillRect(offsetX, offsetY + 30, 12 * scale, 10 * scale);
+  } else if (pose === 'sit') {
+    // Sitting
+    // Hair
+    ctx.fillStyle = '#5a4030';
+    ctx.fillRect(offsetX + 4, offsetY, 24, 10);
+    // Head
+    ctx.fillStyle = '#f5deb3';
+    ctx.fillRect(offsetX + 4, offsetY + 10, 24, 16);
+    // Eyes
+    if (facing !== 'up') {
+      ctx.fillStyle = '#333';
+      ctx.fillRect(offsetX + 8, offsetY + 14, 4, 4);
+      ctx.fillRect(offsetX + 20, offsetY + 14, 4, 4);
+    }
+    // Body
+    ctx.fillStyle = '#6b8cae';
+    ctx.fillRect(offsetX + 2, offsetY + 26, 28, 16);
+    // Arms to sides
+    ctx.fillRect(offsetX - 2, offsetY + 26, 6, 14);
+    ctx.fillRect(offsetX + 28, offsetY + 26, 6, 14);
+    // Legs bent
+    ctx.fillStyle = '#4a5568';
+    ctx.fillRect(offsetX + 2, offsetY + 42, 28, 8);
+  } else {
+    // Standing/walking
+    // Hair
+    ctx.fillStyle = '#5a4030';
+    ctx.fillRect(offsetX + 4, offsetY, 24, 10);
+    // Head
+    ctx.fillStyle = '#f5deb3';
+    ctx.fillRect(offsetX + 4, offsetY + 10, 24, 16);
+    // Eyes
+    if (facing !== 'up') {
+      ctx.fillStyle = '#333';
+      ctx.fillRect(offsetX + 8, offsetY + 14, 4, 4);
+      ctx.fillRect(offsetX + 20, offsetY + 14, 4, 4);
+    }
+    // Body
+    ctx.fillStyle = '#6b8cae';
+    ctx.fillRect(offsetX + 4, offsetY + 26, 24, 18);
+    // Arms
+    const armSwing = pose === 'walk' ? Math.sin(frame * 0.4) * 4 : 0;
+    ctx.fillRect(offsetX, offsetY + 26 + armSwing, 6, 16);
+    ctx.fillRect(offsetX + 26, offsetY + 26 - armSwing, 6, 16);
+    // Legs
+    ctx.fillStyle = '#4a5568';
+    if (pose === 'walk') {
+      const legSwing = Math.sin(frame * 0.4) * 5;
+      ctx.fillRect(offsetX + 6, offsetY + 44, 8, 16 + legSwing);
+      ctx.fillRect(offsetX + 18, offsetY + 44, 8, 16 - legSwing);
+    } else {
+      ctx.fillRect(offsetX + 6, offsetY + 44, 8, 16);
+      ctx.fillRect(offsetX + 18, offsetY + 44, 8, 16);
+    }
+    // Feet
+    ctx.fillStyle = '#3a3a3a';
+    ctx.fillRect(offsetX + 4, offsetY + 58, 10, 4);
+    ctx.fillRect(offsetX + 18, offsetY + 58, 10, 4);
+  }
+  
+  ctx.restore();
+}
+
+// ============================================================
+// GAME STATE & CONFIG
+// ============================================================
+const CONFIG = {
+  MOVE_SPEED: 100,
+  TIME_SCALE: 60,
+  STAT_DECAY_RATE: 0.15,
+};
+
+const state = {
+  character: {
+    x: 200, y: 280,
+    path: [],
+    currentAction: null,
+    actionProgress: 0,
+    actionDuration: 0,
+    facing: 'down',
+    pose: 'stand',
+    frame: 0,
+    pendingAction: null,
+  },
+  stats: { energy: 80, hunger: 70, mood: 75, focus: 60 },
+  time: { hour: 8, minute: 0, day: 1 },
+  world: { rooms: [], furniture: [] },
+};
+
+// ============================================================
+// WORLD - SPATIALLY REALISTIC LAYOUT
+// ============================================================
+function initWorld() {
+  state.world.rooms = [
+    // Top row - bedrooms
+    { id: 'bedroom1', name: 'Master Bedroom', x: 0, y: 0, w: 280, h: 180, color: '#2d3a4a' },
+    { id: 'bedroom2', name: 'Bedroom', x: 280, y: 0, w: 260, h: 180, color: '#2a3848' },
+    { id: 'bedroom3', name: 'Guest Room', x: 540, y: 0, w: 260, h: 180, color: '#2d3a4a' },
+    // Middle row
+    { id: 'living', name: 'Living Room', x: 0, y: 180, w: 420, h: 160, color: '#3d4a5a' },
+    { id: 'bathroom1', name: 'Bathroom', x: 420, y: 180, w: 190, h: 160, color: '#4a5568' },
+    { id: 'bathroom2', name: 'Bathroom', x: 610, y: 180, w: 190, h: 160, color: '#4a5568' },
+    // Bottom row
+    { id: 'kitchen', name: 'Kitchen & Dining', x: 0, y: 340, w: 420, h: 120, color: '#4a4a5a' },
+    { id: 'garden', name: 'Garden', x: 420, y: 340, w: 380, h: 260, color: '#2a4a3a' },
+  ];
+
+  // FURNITURE WITH SPATIAL INTENT
+  state.world.furniture = [
+    // ===== MASTER BEDROOM (bedroom1) =====
+    // Bed is the PRIMARY object, against top wall, centered
+    { id: 'bed1', type: 'bed', x: 90, y: 8, w: 100, h: 85, label: 'Bed', action: 'sleep', facing: 'down', isPrimary: true },
+    // Nightstands flank the bed
+    { id: 'nightstand1', type: 'nightstand', x: 50, y: 30, w: 36, h: 40, label: 'Nightstand', action: 'relax' },
+    { id: 'nightstand2', type: 'nightstand', x: 194, y: 30, w: 36, h: 40, label: 'Nightstand', action: 'relax' },
+    // Closet against left wall
+    { id: 'closet1', type: 'closet', x: 8, y: 70, w: 40, h: 100, label: 'Closet', action: 'dress', facing: 'right' },
+    
+    // ===== BEDROOM 2 =====
+    // Bed against top-left corner
+    { id: 'bed2', type: 'bed', x: 290, y: 8, w: 90, h: 75, label: 'Bed', action: 'sleep', facing: 'down', isPrimary: true },
+    // Desk against right wall, chair faces desk
+    { id: 'desk1', type: 'desk', x: 430, y: 12, w: 80, h: 50, label: 'Desk', action: 'work', facing: 'down' },
+    { id: 'chair1', type: 'chair', x: 455, y: 68, w: 30, h: 40, label: 'Chair', action: 'sit', facing: 'up' },
+    // Bookshelf against bottom-right
+    { id: 'bookshelf1', type: 'bookshelf', x: 470, y: 100, w: 55, h: 72, label: 'Books', action: 'read' },
+    
+    // ===== GUEST ROOM (bedroom3) =====
+    // Bed against top wall
+    { id: 'bed3', type: 'bed', x: 610, y: 8, w: 90, h: 75, label: 'Bed', action: 'sleep', facing: 'down', isPrimary: true },
+    // Small desk area
+    { id: 'desk2', type: 'desk', x: 718, y: 12, w: 70, h: 45, label: 'Desk', action: 'work', facing: 'down' },
+    { id: 'chair2', type: 'chair', x: 738, y: 62, w: 28, h: 38, label: 'Chair', action: 'sit', facing: 'up' },
+    // Plant in corner for warmth
+    { id: 'plant1', type: 'plant', x: 555, y: 110, w: 45, h: 60, label: 'Plant', action: 'garden' },
+    
+    // ===== LIVING ROOM =====
+    // Sofa is PRIMARY, faces TV, back to the room entrance
+    { id: 'sofa', type: 'sofa', x: 30, y: 240, w: 140, h: 55, label: 'Sofa', action: 'relax', facing: 'up', isPrimary: true },
+    // Coffee table in front of sofa
+    { id: 'coffeetable', type: 'coffeetable', x: 55, y: 200, w: 90, h: 30, label: 'Table', action: 'snack' },
+    // TV against top wall, facing sofa
+    { id: 'tv', type: 'tv', x: 60, y: 185, w: 80, h: 50, label: 'TV', action: 'watch', facing: 'down' },
+    // Bookshelf on side wall
+    { id: 'bookshelf2', type: 'bookshelf', x: 350, y: 188, w: 55, h: 80, label: 'Books', action: 'read' },
+    // Rug under seating area
+    { id: 'rug1', type: 'rug', x: 25, y: 195, w: 155, h: 110, color: '#5a4a6a', label: 'Rug', action: null, isDecor: true },
+    // Plant near window
+    { id: 'plant2', type: 'plant', x: 200, y: 195, w: 40, h: 55, label: 'Plant', action: 'garden' },
+    
+    // ===== BATHROOM 1 =====
+    // Toilet against wall
+    { id: 'toilet1', type: 'toilet', x: 435, y: 190, w: 50, h: 60, label: 'Toilet', action: 'hygiene' },
+    // Sink with mirror
+    { id: 'sink1', type: 'sink', x: 505, y: 188, w: 55, h: 55, label: 'Sink', action: 'wash' },
+    // Shower in corner
+    { id: 'shower1', type: 'shower', x: 430, y: 258, w: 80, h: 75, label: 'Shower', action: 'shower', isPrimary: true },
+    
+    // ===== BATHROOM 2 =====
+    { id: 'toilet2', type: 'toilet', x: 625, y: 190, w: 50, h: 60, label: 'Toilet', action: 'hygiene' },
+    { id: 'sink2', type: 'sink', x: 695, y: 188, w: 55, h: 55, label: 'Sink', action: 'wash' },
+    { id: 'shower2', type: 'shower', x: 700, y: 258, w: 85, h: 75, label: 'Shower', action: 'shower' },
+    
+    // ===== KITCHEN & DINING =====
+    // Stove against top wall
+    { id: 'stove', type: 'stove', x: 15, y: 348, w: 75, h: 60, label: 'Stove', action: 'cook', isPrimary: true },
+    // Fridge next to stove
+    { id: 'fridge', type: 'fridge', x: 100, y: 345, w: 55, h: 80, label: 'Fridge', action: 'snack' },
+    // Dining table is PRIMARY for eating, chairs arranged around it
+    { id: 'table', type: 'table', x: 220, y: 365, w: 130, h: 55, label: 'Table', action: 'eat', isPrimary: true },
+    { id: 'chair3', type: 'chair', x: 240, y: 422, w: 28, h: 35, label: 'Chair', action: 'sit', facing: 'up' },
+    { id: 'chair4', type: 'chair', x: 285, y: 422, w: 28, h: 35, label: 'Chair', action: 'sit', facing: 'up' },
+    { id: 'chair5', type: 'chair', x: 330, y: 422, w: 28, h: 35, label: 'Chair', action: 'sit', facing: 'up' },
+    // Sink area
+    { id: 'sink3', type: 'sink', x: 165, y: 348, w: 45, h: 45, label: 'Sink', action: 'wash' },
+    
+    // ===== GARDEN =====
+    // Dog area is cozy corner
+    { id: 'dog', type: 'dog', x: 440, y: 400, w: 85, h: 65, label: 'Dog', action: 'walkDog', isPrimary: true },
+    // Bench for sitting, faces garden
+    { id: 'bench', type: 'bench', x: 560, y: 520, w: 110, h: 40, label: 'Bench', action: 'relax' },
+    // Flower beds
+    { id: 'flowers1', type: 'flowers', x: 440, y: 500, w: 100, h: 55, label: 'Flowers', action: 'garden' },
+    { id: 'flowers2', type: 'flowers', x: 690, y: 360, w: 90, h: 50, label: 'Flowers', action: 'garden' },
+    // Plants scattered naturally
+    { id: 'plant3', type: 'plant', x: 550, y: 365, w: 50, h: 65, label: 'Plant', action: 'garden' },
+    { id: 'plant4', type: 'plant', x: 620, y: 440, w: 45, h: 60, label: 'Plant', action: 'garden' },
+    { id: 'plant5', type: 'plant', x: 750, y: 500, w: 40, h: 55, label: 'Plant', action: 'garden' },
+  ];
+}
+
+// ============================================================
+// ACTIONS
+// ============================================================
+const ACTIONS = {
+  sleep: { name: 'Sleeping', duration: 480, effects: { energy: +60, mood: +10, hunger: -20 }, description: 'Resting peacefully...', pose: 'sleep' },
+  work: { name: 'Working', duration: 60, effects: { energy: -15, focus: +20, mood: -5 }, description: 'Focused on the laptop...', pose: 'sit' },
+  read: { name: 'Reading', duration: 30, effects: { energy: -5, focus: +15, mood: +10 }, description: 'Lost in a good book...', pose: 'sit' },
+  relax: { name: 'Relaxing', duration: 30, effects: { energy: +10, mood: +15, focus: -5 }, description: 'Taking it easy...', pose: 'sit' },
+  watch: { name: 'Watching TV', duration: 45, effects: { energy: +5, mood: +10, focus: -10 }, description: 'Enjoying a show...', pose: 'sit' },
+  cook: { name: 'Cooking', duration: 30, effects: { energy: -10, mood: +5, hunger: +30 }, description: 'Preparing a meal...', pose: 'stand' },
+  eat: { name: 'Eating', duration: 20, effects: { hunger: +40, mood: +10, energy: +5 }, description: 'Enjoying a meal...', pose: 'sit' },
+  snack: { name: 'Snacking', duration: 5, effects: { hunger: +15, mood: +3 }, description: 'Grabbing a quick bite...', pose: 'stand' },
+  hygiene: { name: 'Using bathroom', duration: 5, effects: { mood: +2 }, description: 'Taking care of necessities...', pose: 'stand' },
+  wash: { name: 'Washing hands', duration: 2, effects: { mood: +1 }, description: 'Quick freshen up...', pose: 'stand' },
+  shower: { name: 'Showering', duration: 15, effects: { energy: +10, mood: +15 }, description: 'A refreshing shower...', pose: 'stand' },
+  dress: { name: 'Getting dressed', duration: 5, effects: { mood: +5 }, description: 'Choosing an outfit...', pose: 'stand' },
+  garden: { name: 'Gardening', duration: 30, effects: { energy: -15, mood: +20, focus: +5 }, description: 'Tending to the plants...', pose: 'stand' },
+  walkDog: { name: 'Playing with dog', duration: 20, effects: { energy: -10, mood: +25 }, description: 'Quality time with the pup...', pose: 'stand' },
+  sit: { name: 'Sitting', duration: 10, effects: { energy: +5, mood: +5 }, description: 'Resting for a moment...', pose: 'sit' },
+};
+
+// ============================================================
+// CANVAS & RENDERING
+// ============================================================
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+function render() {
+  const { hour } = state.time;
+  
+  // Day/night ambient
+  let ambientAlpha = 0;
+  if (hour < 6 || hour >= 21) ambientAlpha = 0.35;
+  else if (hour < 8) ambientAlpha = 0.15 * (1 - (hour - 6) / 2);
+  else if (hour >= 19) ambientAlpha = 0.15 * ((hour - 19) / 2);
+
+  // Clear
+  ctx.fillStyle = '#1a1a2a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Draw rooms with floor texture
+  state.world.rooms.forEach(room => {
+    // Base floor
+    ctx.fillStyle = room.color;
+    ctx.fillRect(room.x, room.y, room.w, room.h);
+    
+    // Subtle floor pattern
+    ctx.fillStyle = 'rgba(255,255,255,0.015)';
+    for (let ty = room.y; ty < room.y + room.h; ty += 32) {
+      for (let tx = room.x; tx < room.x + room.w; tx += 32) {
+        if ((Math.floor(tx/32) + Math.floor(ty/32)) % 2 === 0) {
+          ctx.fillRect(tx, ty, 32, 32);
+        }
+      }
+    }
+    
+    // Walls
+    ctx.strokeStyle = '#1a1a2e';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(room.x, room.y, room.w, room.h);
+    
+    // Room label
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.font = '10px sans-serif';
+    ctx.fillText(room.name, room.x + 8, room.y + 14);
+  });
+
+  // Sort furniture and character by Y for proper layering
+  const charY = state.character.y;
+  const furnitureBehind = state.world.furniture.filter(f => !f.isDecor && f.y + f.h <= charY);
+  const furnitureFront = state.world.furniture.filter(f => !f.isDecor && f.y + f.h > charY);
+  const decorItems = state.world.furniture.filter(f => f.isDecor);
+
+  // Draw decor (rugs) first
+  decorItems.forEach(f => drawFurniture(ctx, f));
+  
+  // Draw furniture behind character
+  furnitureBehind.forEach(f => drawFurniture(ctx, f));
+
+  // Draw character
+  const char = state.character;
+  const isMoving = char.path.length > 0;
+  const pose = char.currentAction ? ACTIONS[char.currentAction]?.pose || 'stand' : (isMoving ? 'walk' : 'stand');
+  
+  drawCharacter(ctx, char.x, char.y, pose, char.facing, char.frame);
+
+  // Action progress ring
+  if (char.currentAction) {
+    const progress = char.actionProgress / char.actionDuration;
+    ctx.beginPath();
+    ctx.arc(char.x, char.y - 55, 14, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+    ctx.strokeStyle = '#4ade80';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+
+  // Draw furniture in front of character
+  furnitureFront.forEach(f => drawFurniture(ctx, f));
+
+  // Night overlay
+  if (ambientAlpha > 0) {
+    ctx.fillStyle = `rgba(10, 10, 30, ${ambientAlpha})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+// ============================================================
+// MOVEMENT & ACTIONS
+// ============================================================
+function findPath(sx, sy, ex, ey) {
+  const path = [];
+  const dist = Math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2);
+  const steps = Math.max(1, Math.floor(dist / 12));
+  for (let i = 1; i <= steps; i++) {
+    path.push({ x: sx + (ex - sx) * (i / steps), y: sy + (ey - sy) * (i / steps) });
+  }
+  return path;
+}
+
+function getInteractionPoint(f) {
+  // Determine where character should stand to interact
+  const facing = f.facing || 'down';
+  const margin = 24;
+  
+  switch (facing) {
+    case 'up':
+      return { x: f.x + f.w / 2, y: f.y - margin };
+    case 'left':
+      return { x: f.x - margin, y: f.y + f.h / 2 };
+    case 'right':
+      return { x: f.x + f.w + margin, y: f.y + f.h / 2 };
+    default: // down
+      return { x: f.x + f.w / 2, y: f.y + f.h + margin };
+  }
+}
+
+function updateCharacter(dt) {
+  const char = state.character;
+  char.frame += dt * 10;
+
+  if (char.currentAction) {
+    char.actionProgress += dt * CONFIG.TIME_SCALE;
+    if (char.actionProgress >= char.actionDuration) completeAction();
+    return;
+  }
+
+  if (char.path.length > 0) {
+    const target = char.path[0];
+    const dx = target.x - char.x;
+    const dy = target.y - char.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    // Update facing based on movement
+    if (Math.abs(dx) > Math.abs(dy)) {
+      char.facing = dx > 0 ? 'right' : 'left';
+    } else {
+      char.facing = dy > 0 ? 'down' : 'up';
+    }
+
+    if (dist < 4) {
+      char.x = target.x;
+      char.y = target.y;
+      char.path.shift();
+      if (char.path.length === 0 && char.pendingAction) {
+        startAction(char.pendingAction);
+        char.pendingAction = null;
+      }
+    } else {
+      const move = CONFIG.MOVE_SPEED * dt;
+      char.x += (dx / dist) * move;
+      char.y += (dy / dist) * move;
+    }
+  }
+}
+
+function startAction(actionId) {
+  const action = ACTIONS[actionId];
+  if (!action) return;
+  state.character.currentAction = actionId;
+  state.character.actionProgress = 0;
+  state.character.actionDuration = action.duration;
+  state.character.pose = action.pose;
+  updateActionUI(action.name, action.description);
+}
+
+function completeAction() {
+  const action = ACTIONS[state.character.currentAction];
+  if (!action) return;
+  Object.entries(action.effects).forEach(([stat, val]) => {
+    state.stats[stat] = Math.max(0, Math.min(100, state.stats[stat] + val));
+  });
+  state.time.minute += action.duration;
+  normalizeTime();
+  state.character.currentAction = null;
+  state.character.actionProgress = 0;
+  state.character.pose = 'stand';
+  updateActionUI('Idle', 'Click on furniture to interact.');
+  updateStatsUI();
+  updateTimeUI();
+}
+
+function updateTime(dt) {
+  if (state.character.currentAction) return;
+  state.time.minute += dt * CONFIG.TIME_SCALE * 0.05;
+  normalizeTime();
+  const decay = CONFIG.STAT_DECAY_RATE * dt;
+  state.stats.energy = Math.max(0, state.stats.energy - decay * 0.3);
+  state.stats.hunger = Math.max(0, state.stats.hunger - decay * 0.5);
+  state.stats.mood = Math.max(0, state.stats.mood - decay * 0.2);
+  updateStatsUI();
+  updateTimeUI();
+}
+
+function normalizeTime() {
+  while (state.time.minute >= 60) { state.time.minute -= 60; state.time.hour++; }
+  while (state.time.hour >= 24) { state.time.hour -= 24; state.time.day++; }
+}
+
+// ============================================================
+// INPUT
+// ============================================================
+canvas.addEventListener('click', (e) => {
+  if (state.character.currentAction) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  // Find clicked furniture (ignore decor)
+  const clicked = state.world.furniture.find(f =>
+    !f.isDecor && f.action &&
+    mx >= f.x && mx <= f.x + f.w && my >= f.y && my <= f.y + f.h
+  );
+
+  if (clicked) {
+    const interactPoint = getInteractionPoint(clicked);
+    state.character.path = findPath(state.character.x, state.character.y, interactPoint.x, interactPoint.y);
+    state.character.pendingAction = clicked.action;
+    updateActionUI('Walking...', `Going to ${clicked.label.toLowerCase()}...`);
+  } else {
+    state.character.path = findPath(state.character.x, state.character.y, mx, my);
+    state.character.pendingAction = null;
+  }
+});
+
+// ============================================================
+// UI
+// ============================================================
+function updateStatsUI() {
+  ['energy', 'hunger', 'mood', 'focus'].forEach(stat => {
+    const val = Math.round(state.stats[stat]);
+    document.getElementById(`${stat}-val`).textContent = val;
+    document.getElementById(`${stat}-bar`).style.width = `${val}%`;
+  });
+}
+function updateTimeUI() {
+  const { hour, minute, day } = state.time;
+  document.getElementById('time-display').textContent = `Day ${day} — ${String(Math.floor(hour)).padStart(2,'0')}:${String(Math.floor(minute)).padStart(2,'0')}`;
+}
+function updateActionUI(title, desc) {
+  document.querySelector('#action-info .title').textContent = title;
+  document.getElementById('action-desc').textContent = desc;
+}
+
+// ============================================================
+// GAME LOOP
+// ============================================================
+let lastTime = 0;
+function gameLoop(ts) {
+  const dt = Math.min((ts - lastTime) / 1000, 0.1);
+  lastTime = ts;
+  updateCharacter(dt);
+  updateTime(dt);
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+initWorld();
+updateStatsUI();
+updateTimeUI();
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
